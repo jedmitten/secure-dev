@@ -1,0 +1,23 @@
+# ~/.config/secure-dev/config.toml
+# Secure Python Development Environment — configuration
+# Edit before running install.sh
+
+[container]
+name        = "SecureProject"
+path        = "~/Secure/secure-project.sparsebundle"
+volume_path = "/Volumes/SecureProject"
+size        = "50g"
+
+[security]
+keychain_service    = "secure-dev-apfs"
+keychain_account    = "apfs-password"
+yubikey_slot        = 2
+hmac_salt_path      = "~/.config/secure-dev/hmac.salt"
+bitwarden_item_name = "SecureProject APFS"
+
+[idle]
+timeout_minutes         = 15
+check_interval_seconds  = 60
+
+[logging]
+detach_log = "~/.config/secure-dev/detach.log"
