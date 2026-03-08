@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.securedev.screenlock.plist
+  Keeps screenlock-watcher.sh running permanently.
+  Installed to ~/Library/LaunchAgents/ by install.sh.
+-->
+<dict>
+    <key>Label</key>
+    <string>com.securedev.screenlock</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>HOME_BIN/screenlock-watcher.sh</string>
+    </array>
+
+    <!-- Restart automatically if it exits for any reason -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Start immediately when loaded -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Throttle restarts to avoid tight crash loops -->
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <key>StandardOutPath</key>
+    <string>HOME_CONFIG/launchd-screenlock.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>HOME_CONFIG/launchd-screenlock.log</string>
+</dict>
+</plist>
+
+<!--
+  NOTE: install.sh replaces HOME_BIN and HOME_CONFIG with actual paths.
+  Do not load this template directly.
+-->
