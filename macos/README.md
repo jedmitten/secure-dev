@@ -47,7 +47,7 @@ cd ~/bin/secure-dev/macos
 ### 2. Configure YubiKey HMAC slot
 
 ```bash
-ykman otp hmac-sha1 2
+ykman otp chalresp --generate 2
 ```
 
 > **Warning:** This overwrites any existing slot 2 configuration. `create-container.sh`

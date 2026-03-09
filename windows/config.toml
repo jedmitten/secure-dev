@@ -1,23 +1,28 @@
-# ~/.config/secure-dev/config.toml
-# Secure Python Development Environment — configuration
-# Edit before running install.sh
+# %USERPROFILE%\.config\secure-dev\config.toml
+# Secure Python Development Environment — Windows / VeraCrypt
+# Edit before running install.ps1
 
 [container]
 name        = "SecureProject"
-path        = "~/Secure/secure-project.sparsebundle"
-volume_path = "/Volumes/SecureProject"
-size        = "50g"
+# Path to the VeraCrypt container file
+path        = "C:\\Users\\%USERNAME%\\Secure\\secure-project.vc"
+# Drive letter VeraCrypt will mount the volume at
+drive_letter = "S"
+size_mb     = 51200   # 50 GB in MB
 
 [security]
-keychain_service    = "secure-dev-apfs"
-keychain_account    = "apfs-password"
+# Windows Credential Manager target name
+credential_target   = "secure-dev-apfs"
+credential_username = "apfs-password"
 yubikey_slot        = 2
-hmac_salt_path      = "~/.config/secure-dev/hmac.salt"
-bitwarden_item_name = "SecureProject APFS"
+hmac_salt_path      = "%USERPROFILE%\\.config\\secure-dev\\hmac.salt"
+bitwarden_item_name = "SecureProject VeraCrypt"
+# Path to VeraCrypt CLI (veracrypt.exe or VeraCrypt.exe)
+veracrypt_cli       = "C:\\Program Files\\VeraCrypt\\VeraCrypt.exe"
 
 [idle]
-timeout_minutes         = 15
-check_interval_seconds  = 60
+timeout_minutes        = 15
+check_interval_seconds = 60
 
 [logging]
-detach_log = "~/.config/secure-dev/detach.log"
+detach_log = "%USERPROFILE%\\.config\\secure-dev\\detach.log"
