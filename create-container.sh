@@ -52,6 +52,28 @@ ykman info &>/dev/null || die "YubiKey not detected. Insert your YubiKey and ret
 YK_SERIAL=$(ykman info | awk '/Serial/ {print $NF}')
 info "YubiKey detected — serial: $YK_SERIAL"
 
+# ── Gap 3: Check slot status before any write ─────────────────────────────────
+# ykman otp hmac-sha1 <slot> silently overwrites existing config — warn the user.
+SLOT_INFO=$(ykman otp info 2>/dev/null || true)
+SLOT_LINE=$(echo "$SLOT_INFO" | grep -i "Slot $YK_SLOT" || true)
+if echo "$SLOT_LINE" | grep -qi "programmed"; then
+    warn "YubiKey slot $YK_SLOT is already programmed:"
+    echo "  $SLOT_LINE"
+    warn "Continuing will OVERWRITE the existing slot $YK_SLOT configuration."
+    warn "If slot $YK_SLOT has a Yubico OTP or other credential, back it up first."
+    echo ""
+    read -rp "  Type 'overwrite' to confirm, or Ctrl-C to abort: " CONFIRM
+    [[ "$CONFIRM" == "overwrite" ]] || die "Aborted. Slot $YK_SLOT not modified."
+else
+    info "YubiKey slot $YK_SLOT is empty — safe to program."
+fi
+
+# Configure HMAC-SHA1 on the slot
+info "Configuring HMAC-SHA1 on YubiKey slot $YK_SLOT…"
+ykman otp hmac-sha1 --force "$YK_SLOT" \
+    || die "Failed to configure HMAC-SHA1 on slot $YK_SLOT."
+success "YubiKey slot $YK_SLOT configured with HMAC-SHA1"
+
 # ── Step 1: Generate APFS password ───────────────────────────────────────────
 info "Generating strong APFS container password…"
 APFS_PASSWORD=$(openssl rand -base64 32 | tr -d '\n/+=' | head -c 40)
