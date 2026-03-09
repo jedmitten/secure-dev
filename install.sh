@@ -59,11 +59,27 @@ require_brew
 info "Checking dependencies…"
 brew_install_if_missing "python-yubico/stable/yubikey-manager" "ykman"
 brew_install_if_missing "age"
-brew_install_if_missing "age-plugin-yubikey"
+# age-plugin-yubikey removed — not used in XOR-HMAC credential flow
 brew_install_if_missing "bitwarden-cli" "bw"
 brew_install_if_missing "pyenv"
 brew_install_if_missing "uv"
 brew_install_if_missing "jq"
+brew_install_if_missing "sleepwatcher"   # Gap 2: required for sleep/lid-close trigger
+
+# Gap 1: PyObjC — required by screenlock-watcher.sh for Darwin notification centre
+# Uses the system Python3 that ships with macOS / Homebrew python3
+PYTHON3=$(command -v python3 || true)
+if [[ -n "$PYTHON3" ]]; then
+    if ! "$PYTHON3" -c "import Foundation" &>/dev/null; then
+        info "Installing pyobjc-framework-Cocoa (required for screen lock detection)…"
+        "$PYTHON3" -m pip install --quiet pyobjc-framework-Cocoa
+        success "pyobjc-framework-Cocoa installed"
+    else
+        success "pyobjc-framework-Cocoa already present"
+    fi
+else
+    warn "python3 not found — skipping PyObjC install. Screen lock trigger will fall back to polling."
+fi
 
 # ── Step 2: Create directories ────────────────────────────────────────────────
 info "Creating directory structure…"
@@ -80,7 +96,7 @@ fi
 
 # ── Step 4: Install scripts ───────────────────────────────────────────────────
 info "Installing scripts to $BIN_DIR…"
-for script in mount-secure.sh detach.sh create-container.sh; do
+for script in mount-secure.sh detach.sh create-container.sh screenlock-watcher.sh github-init.sh; do
     if [[ -f "$SCRIPT_DIR/$script" ]]; then
         cp "$SCRIPT_DIR/$script" "$BIN_DIR/$script"
         chmod +x "$BIN_DIR/$script"
@@ -209,19 +225,45 @@ for plist in screenlock sleep idle; do
     success "com.securedev.${plist} loaded"
 done
 
-# ── Step 8: Sleep hook via pmset (requires sudo once) ────────────────────────
-SLEEP_HOOK="/etc/pm/sleep.d/99-securedev"
-if [[ ! -f "$SLEEP_HOOK" ]]; then
-    warn "Sleep/lid-close hook requires a one-time sudo write to /etc/pm/sleep.d/"
-    echo -e "  Run manually:\n"
-    echo '  sudo mkdir -p /etc/pm/sleep.d'
-    echo "  sudo tee /etc/pm/sleep.d/99-securedev > /dev/null <<'HOOK'"
-    echo '  #!/bin/bash'
-    echo '  case "$1" in'
-    echo "      sleep|hibernate) $BIN_DIR/detach.sh --trigger sleep ;;"
-    echo '  esac'
-    echo '  HOOK'
-    echo '  sudo chmod +x /etc/pm/sleep.d/99-securedev'
+# ── Step 8: Sleep/lid-close hook via sleepwatcher ────────────────────────────
+# /etc/pm/sleep.d/ is Linux only — macOS uses sleepwatcher (brew install sleepwatcher)
+SLEEP_SCRIPT="$HOME/.sleep"
+WAKE_SCRIPT="$HOME/.wakeup"
+
+if [[ ! -f "$SLEEP_SCRIPT" ]]; then
+    cat > "$SLEEP_SCRIPT" <<EOF
+#!/bin/bash
+# Called by sleepwatcher on system sleep / lid close
+$BIN_DIR/detach.sh --trigger sleep
+EOF
+    chmod 700 "$SLEEP_SCRIPT"
+    success "Sleep hook installed at $SLEEP_SCRIPT"
+else
+    warn "$SLEEP_SCRIPT already exists — leaving untouched (verify it calls detach.sh)"
+fi
+
+# sleepwatcher also requires a .wakeup file to exist (even if empty)
+if [[ ! -f "$WAKE_SCRIPT" ]]; then
+    echo '#!/bin/bash' > "$WAKE_SCRIPT"
+    chmod 700 "$WAKE_SCRIPT"
+fi
+
+# Install and load the sleepwatcher launchd agent
+SLEEPWATCHER_PLIST="$LAUNCHAGENTS_DIR/de.bernhard-baehr.sleepwatcher.plist"
+if [[ ! -f "$SLEEPWATCHER_PLIST" ]]; then
+    # Homebrew places the example plist here on Apple Silicon; Intel path differs
+    BREW_PLIST="$(brew --prefix)/opt/sleepwatcher/de.bernhard-baehr.sleepwatcher-20compatibility-localuser.plist"
+    if [[ -f "$BREW_PLIST" ]]; then
+        cp "$BREW_PLIST" "$SLEEPWATCHER_PLIST"
+        launchctl unload "$SLEEPWATCHER_PLIST" 2>/dev/null || true
+        launchctl load   "$SLEEPWATCHER_PLIST"
+        success "sleepwatcher launchd agent loaded"
+    else
+        warn "sleepwatcher plist not found at expected Homebrew path."
+        warn "Run manually: cp \$(brew --prefix)/opt/sleepwatcher/*.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/de.bernhard-baehr.sleepwatcher*.plist"
+    fi
+else
+    success "sleepwatcher launchd agent already installed"
 fi
 
 # ── Step 9: Automator Quick Action instructions ───────────────────────────────

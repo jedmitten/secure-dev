@@ -28,6 +28,10 @@ If the cache is stale or the YubiKey is absent, the script falls back to Bitward
 - YubiKey 5 series with HMAC-SHA1 configured on slot 2
 - Bitwarden account + Bitwarden CLI
 - Homebrew
+- `pyobjc-framework-Cocoa` — required by the screen lock watcher (`install.sh` installs automatically)
+- `sleepwatcher` — required for sleep/lid-close trigger (`install.sh` installs via Homebrew)
+
+> **Note:** `age-plugin-yubikey` was listed as a dependency in earlier versions but is not used by the XOR-HMAC credential flow. It has been removed from `install.sh`.
 
 ---
 
@@ -38,6 +42,8 @@ If the cache is stale or the YubiKey is absent, the script falls back to Bitward
 ```bash
 ykman otp hmac-sha1 2
 ```
+
+> **Warning:** This overwrites any existing configuration on slot 2. If slot 2 already has a credential (e.g. Yubico OTP), back it up before running this command. `create-container.sh` will detect a programmed slot and prompt for confirmation before overwriting.
 
 If you have a backup YubiKey, enrol it now with the same command.  
 The HMAC key on each YubiKey is independent — both need to be set up at creation time.
@@ -135,8 +141,8 @@ uv add fastapi numpy
 
 | Trigger | Mechanism |
 |---|---|
-| Screen lock | `screenlock-watcher.sh` (launchd KeepAlive, Darwin notification centre) |
-| Sleep / lid close | `com.securedev.sleep.plist` + `/etc/pm/sleep.d/99-securedev` |
+| Screen lock | `screenlock-watcher.sh` (launchd KeepAlive, Darwin notification centre via PyObjC) |
+| Sleep / lid close | `sleepwatcher` daemon → `~/.sleep` hook → `detach.sh --trigger sleep` |
 | Idle timeout | `com.securedev.idle.plist` polling HID idle time via `ioreg` |
 | Manual shortcut | Automator Quick Action → `detach.sh --trigger manual` |
 
@@ -205,7 +211,8 @@ Does not protect against:
 │   ├── mount-secure.sh
 │   ├── detach.sh
 │   ├── create-container.sh
-│   └── screenlock-watcher.sh
+│   ├── screenlock-watcher.sh
+│   └── github-init.sh
 │
 ├── Secure/
 │   └── secure-project.sparsebundle
@@ -219,6 +226,6 @@ Does not protect against:
 
 ~/Library/LaunchAgents/
 ├── com.securedev.screenlock.plist
-├── com.securedev.sleep.plist
+├── de.bernhard-baehr.sleepwatcher.plist
 └── com.securedev.idle.plist
 ```
