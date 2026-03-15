@@ -205,12 +205,13 @@ else
     read -rp "  Press ENTER after saving it securely…"
 fi
 
-# Clear password from environment
-unset APFS_PASSWORD HMAC_OUTPUT WRAPPED
+# Clear password from environment — done after mount below
+unset HMAC_OUTPUT WRAPPED
 
 # ── Step 6: Create sparsebundle ──────────────────────────────────────────────
 info "Creating encrypted APFS sparsebundle (${SIZE})…"
-info "You will be prompted for the container password — retrieve it from Bitwarden."
+echo ""
+read -rsp "  Container password (paste from Bitwarden/notes): " APFS_PASSWORD_CONFIRM
 echo ""
 
 hdiutil create \
@@ -220,13 +221,15 @@ hdiutil create \
     -volname "$VOLUME_NAME" \
     -encryption AES-256 \
     -stdinpass \
-    "$SB_PATH" <<< "$(bw get password "$BW_ITEM" 2>/dev/null || read -rsp 'Container password: ' pw && echo "$pw")"
+    "$SB_PATH" <<< "$APFS_PASSWORD_CONFIRM"
 
 success "Sparsebundle created at $SB_PATH"
 
 # ── Step 7: Initial mount and directory scaffold ──────────────────────────────
 info "Mounting for initial directory setup…"
-hdiutil attach "$SB_PATH" -mountpoint "$VOLUME_PATH"
+hdiutil attach "$SB_PATH" -mountpoint "$VOLUME_PATH" -stdinpass <<< "$APFS_PASSWORD_CONFIRM"
+
+unset APFS_PASSWORD_CONFIRM
 
 mkdir -p "$VOLUME_PATH/repos"
 mkdir -p "$VOLUME_PATH/data"
