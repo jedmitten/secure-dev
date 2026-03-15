@@ -41,7 +41,7 @@ LOG=$(eval echo "$(read_toml "$CONFIG_FILE" logging detach_log)")
 # ── Preflight ──────────────────────────────────────────────────────────────────
 echo -e "\n${BOLD}Secure Dev — Mount${NC}\n"
 
-[[ -f "$SB_PATH" ]] || die "Sparsebundle not found at $SB_PATH. Run create-container.sh first."
+[[ -e "$SB_PATH" ]] || die "Sparsebundle not found at $SB_PATH. Run create-container.sh first."
 
 # Idempotent — already mounted?
 if mount | grep -q "$VOLUME_PATH"; then

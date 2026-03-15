@@ -4,7 +4,7 @@
 
 [container]
 name        = "SecureProject"
-path        = "~/Secure/secure-project.sparsebundle"
+path        = "/Users/jedmitten/Secure/secure-project.sparsebundle"
 volume_path = "/Volumes/SecureProject"
 size        = "50g"
 
@@ -12,7 +12,7 @@ size        = "50g"
 keychain_service    = "secure-dev-apfs"
 keychain_account    = "apfs-password"
 yubikey_slot        = 2
-hmac_salt_path      = "~/.config/secure-dev/hmac.salt"
+hmac_salt_path      = "/Users/jedmitten/.config/secure-dev/hmac.salt"
 bitwarden_item_name = "SecureProject APFS"
 
 [idle]
@@ -20,4 +20,4 @@ timeout_minutes         = 15
 check_interval_seconds  = 60
 
 [logging]
-detach_log = "~/.config/secure-dev/detach.log"
+detach_log = "/Users/jedmitten/.config/secure-dev/detach.log"

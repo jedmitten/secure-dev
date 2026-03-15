@@ -42,7 +42,7 @@ BW_ITEM=$(read_toml "$CONFIG_FILE" security bitwarden_item_name)
 # ── Preflight ──────────────────────────────────────────────────────────────────
 echo -e "\n${BOLD}Secure Dev — Container Creation${NC}\n"
 
-[[ -f "$SB_PATH" ]] && die "Container already exists at $SB_PATH. Aborting to avoid data loss."
+[[ -e "$SB_PATH" ]] && die "Container already exists at $SB_PATH. Aborting to avoid data loss."
 command -v ykman   &>/dev/null || die "ykman not found. Run install.sh first."
 command -v bw      &>/dev/null || die "Bitwarden CLI not found. Run install.sh first."
 command -v hdiutil &>/dev/null || die "hdiutil not found (not macOS?)."

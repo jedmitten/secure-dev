@@ -53,7 +53,7 @@ echo -e "\n${BOLD}Secure Dev — Phase 1 Container Bootstrap${NC}\n"
 echo -e "  ${YELLOW}YubiKey enrollment deferred — second key not yet available.${NC}"
 echo -e "  Container password will be held in Bitwarden until enroll-yubikeys.sh\n"
 
-[[ -f "$SB_PATH" ]] && die "Container already exists at $SB_PATH. Aborting."
+[[ -e "$SB_PATH" ]] && die "Container already exists at $SB_PATH. Aborting."
 command -v bw      &>/dev/null || die "Bitwarden CLI not found. Run install.sh first."
 command -v hdiutil &>/dev/null || die "hdiutil not found (not macOS?)."
 command -v jq      &>/dev/null || die "jq not found. Run install.sh first."
