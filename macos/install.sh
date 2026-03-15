@@ -60,22 +60,37 @@ info "Checking dependencies…"
 brew_install_if_missing "python-yubico/stable/yubikey-manager" "ykman"
 brew_install_if_missing "age"
 # age-plugin-yubikey removed — not used in XOR-HMAC credential flow
-brew_install_if_missing "bitwarden-cli" "bw"
+# bitwarden-cli: install via npm — Homebrew bottle has broken z3/llvm dep on macOS 13
+if ! command -v bw &>/dev/null; then
+    info "Installing bitwarden-cli via npm…"
+    command -v npm &>/dev/null || die "npm not found. Install Node.js from https://nodejs.org first."
+    npm install -g @bitwarden/cli --quiet
+    success "bitwarden-cli installed via npm"
+else
+    success "bitwarden-cli already present ($(command -v bw))"
+fi
 brew_install_if_missing "pyenv"
 brew_install_if_missing "uv"
 brew_install_if_missing "jq"
 brew_install_if_missing "sleepwatcher"   # Gap 2: required for sleep/lid-close trigger
 
 # Gap 1: PyObjC — required by screenlock-watcher.sh for Darwin notification centre
-# Uses the system Python3 that ships with macOS / Homebrew python3
+# Installed into a dedicated venv to avoid PEP 668 externally-managed-environment errors.
+# screenlock-watcher.sh must invoke this venv's python3, not the system one.
+PYOBJC_VENV="$CONFIG_DIR/venv"
 PYTHON3=$(command -v python3 || true)
 if [[ -n "$PYTHON3" ]]; then
-    if ! "$PYTHON3" -c "import Foundation" &>/dev/null; then
-        info "Installing pyobjc-framework-Cocoa (required for screen lock detection)…"
-        "$PYTHON3" -m pip install --quiet pyobjc-framework-Cocoa
-        success "pyobjc-framework-Cocoa installed"
+    if [[ ! -d "$PYOBJC_VENV" ]]; then
+        info "Creating Python venv for PyObjC at $PYOBJC_VENV…"
+        "$PYTHON3" -m venv "$PYOBJC_VENV"
+        success "venv created"
+    fi
+    if ! "$PYOBJC_VENV/bin/python3" -c "import Foundation" &>/dev/null; then
+        info "Installing pyobjc-framework-Cocoa into venv…"
+        "$PYOBJC_VENV/bin/pip" install --quiet pyobjc-framework-Cocoa
+        success "pyobjc-framework-Cocoa installed into $PYOBJC_VENV"
     else
-        success "pyobjc-framework-Cocoa already present"
+        success "pyobjc-framework-Cocoa already present in venv"
     fi
 else
     warn "python3 not found — skipping PyObjC install. Screen lock trigger will fall back to polling."
@@ -96,7 +111,7 @@ fi
 
 # ── Step 4: Install scripts ───────────────────────────────────────────────────
 info "Installing scripts to $BIN_DIR…"
-for script in mount-secure.sh detach.sh create-container.sh screenlock-watcher.sh github-init.sh; do
+for script in mount-secure.sh detach.sh create-container.sh create-container-phase1.sh enroll-yubikeys.sh screenlock-watcher.sh github-init.sh; do
     if [[ -f "$SCRIPT_DIR/$script" ]]; then
         cp "$SCRIPT_DIR/$script" "$BIN_DIR/$script"
         chmod +x "$BIN_DIR/$script"
