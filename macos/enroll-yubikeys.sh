@@ -39,6 +39,7 @@ read_toml() {
 KC_SERVICE=$(read_toml "$CONFIG_FILE" security keychain_service)
 YK_SLOT=$(read_toml "$CONFIG_FILE" security yubikey_slot)
 SALT_DIR=$(eval echo "$(dirname "$(read_toml "$CONFIG_FILE" security hmac_salt_path)")")
+PREFERRED_SERIAL=$(read_toml "$CONFIG_FILE" security preferred_serial)
 BW_ITEM=$(read_toml "$CONFIG_FILE" security bitwarden_item_name)
 
 # ── Preflight ──────────────────────────────────────────────────────────────────
@@ -70,6 +71,15 @@ done
 [[ ${#NEW_SERIALS[@]} -eq 0 ]] && die "All detected keys are already enrolled. Plug in the new key and retry."
 info "New key(s) to enroll: ${NEW_SERIALS[*]}"
 [[ ${#ENROLLED_SERIALS[@]} -gt 0 ]] && info "Already enrolled: ${ENROLLED_SERIALS[*]}"
+
+# Move preferred serial to front of enrolled list so it's used for password retrieval
+if [[ -n "${PREFERRED_SERIAL:-}" && ${#ENROLLED_SERIALS[@]} -gt 1 ]]; then
+    ORDERED=()
+    for s in "${ENROLLED_SERIALS[@]}"; do [[ "$s" == "$PREFERRED_SERIAL" ]] && ORDERED+=("$s"); done
+    for s in "${ENROLLED_SERIALS[@]}"; do [[ "$s" != "$PREFERRED_SERIAL" ]] && ORDERED+=("$s"); done
+    ENROLLED_SERIALS=("${ORDERED[@]}")
+    unset ORDERED
+fi
 
 # ── Retrieve container password ───────────────────────────────────────────────
 # Try enrolled key first, fall back to Bitwarden.

@@ -184,25 +184,23 @@ fi
 
 # ── Create sparsebundle ──────────────────────────────────────────────────────
 info "Creating encrypted APFS sparsebundle (${SIZE})..."
-echo ""
-read -rsp "  Container password (paste from notes/Bitwarden): " APFS_PASSWORD_CONFIRM
-echo ""
-
-hdiutil create \
+printf '%s' "$APFS_PASSWORD" | hdiutil create \
     -size "$SIZE" \
     -type SPARSEBUNDLE \
     -fs APFS \
     -volname "$VOLUME_NAME" \
     -encryption AES-256 \
     -stdinpass \
-    "$SB_PATH" <<< "$APFS_PASSWORD_CONFIRM"
+    "$SB_PATH"
 
 success "Sparsebundle created at $SB_PATH"
 
 # ── Initial mount and directory scaffold ──────────────────────────────────────
 info "Mounting for initial directory setup..."
-hdiutil attach "$SB_PATH" -mountpoint "$VOLUME_PATH" -stdinpass <<< "$APFS_PASSWORD_CONFIRM"
-unset APFS_PASSWORD_CONFIRM APFS_PASSWORD
+printf '%s' "$APFS_PASSWORD" | hdiutil attach "$SB_PATH" \
+    -mountpoint "$VOLUME_PATH" \
+    -stdinpass
+unset APFS_PASSWORD
 
 mkdir -p "$VOLUME_PATH/repos"
 mkdir -p "$VOLUME_PATH/data"

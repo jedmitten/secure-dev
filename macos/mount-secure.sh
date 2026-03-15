@@ -36,6 +36,7 @@ VOLUME_PATH=$(read_toml "$CONFIG_FILE" container volume_path)
 KC_SERVICE=$(read_toml "$CONFIG_FILE" security keychain_service)
 YK_SLOT=$(read_toml "$CONFIG_FILE" security yubikey_slot)
 SALT_DIR=$(eval echo "$(dirname "$(read_toml "$CONFIG_FILE" security hmac_salt_path)")")
+PREFERRED_SERIAL=$(read_toml "$CONFIG_FILE" security preferred_serial)
 BW_ITEM=$(read_toml "$CONFIG_FILE" security bitwarden_item_name)
 LOG=$(eval echo "$(read_toml "$CONFIG_FILE" logging detach_log)")
 
@@ -60,12 +61,12 @@ try_yubikey_unlock() {
     local salt_path="$SALT_DIR/hmac.salt.$serial"
     local kc_account="apfs-password-$serial"
 
-    [[ -f "$salt_path" ]] || { warn "No salt file for key $serial ($salt_path). Key may not be enrolled."; return 1; }
+    [[ -f "$salt_path" ]] || { warn "No salt file for key $serial ($salt_path). Key may not be enrolled." >&2; return 1; }
 
     local salt hmac wrapped password
     salt=$(cat "$salt_path")
 
-    info "Touch YubiKey $serial when it flashes..."
+    info "Touch YubiKey $serial when it flashes..." >&2
     hmac=$(ykman --device "$serial" otp calculate "$YK_SLOT" "$salt" 2>/dev/null) || return 1
 
     wrapped=$(security find-generic-password \
@@ -82,11 +83,20 @@ print(out.decode())
     echo "$password"
 }
 
-# Try each detected YubiKey
+# Try each detected YubiKey — preferred key first
 YK_SERIALS=()
 while IFS= read -r line; do
     [[ -n "$line" ]] && YK_SERIALS+=("$line")
 done < <(ykman list --serials 2>/dev/null)
+
+# Move preferred serial to front if present
+if [[ -n "${PREFERRED_SERIAL:-}" ]]; then
+    ORDERED=()
+    for s in "${YK_SERIALS[@]}"; do [[ "$s" == "$PREFERRED_SERIAL" ]] && ORDERED+=("$s"); done
+    for s in "${YK_SERIALS[@]}"; do [[ "$s" != "$PREFERRED_SERIAL" ]] && ORDERED+=("$s"); done
+    YK_SERIALS=("${ORDERED[@]}")
+    unset ORDERED
+fi
 
 for serial in "${YK_SERIALS[@]}"; do
     APFS_PASSWORD=$(try_yubikey_unlock "$serial" 2>/dev/null) && break || true

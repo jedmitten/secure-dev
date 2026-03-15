@@ -98,22 +98,22 @@ if [[ -f "$VENV_HINT_FILE" ]]; then
 fi
 
 # Kill any processes with open files on the volume (prevents hdiutil busy error)
-info "Checking for open files on $VOLUME_PATH…"
+info "Checking for open files on $VOLUME_PATH..."
 PIDS=$(lsof +D "$VOLUME_PATH" 2>/dev/null | awk 'NR>1 {print $2}' | sort -u || true)
 if [[ -n "$PIDS" ]]; then
-    warn "Processes with open files: $PIDS — sending SIGTERM…"
+    warn "Processes with open files: $PIDS — sending SIGTERM..."
     echo "$PIDS" | xargs kill -TERM 2>/dev/null || true
     sleep 1
 fi
 
 # ── Detach ─────────────────────────────────────────────────────────────────────
-info "Detaching $VOLUME_PATH (trigger: $TRIGGER)…"
+info "Detaching $VOLUME_PATH (trigger: $TRIGGER)..."
 
 # Try clean detach first
 if hdiutil detach "$VOLUME_PATH" 2>/dev/null; then
     success "Detached cleanly"
 else
-    warn "Clean detach failed — forcing…"
+    warn "Clean detach failed — forcing..."
     hdiutil detach "$VOLUME_PATH" -force 2>/dev/null \
         || die "Forced detach failed. Unmount manually: hdiutil detach $VOLUME_PATH -force"
     success "Force-detached"

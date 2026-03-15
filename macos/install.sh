@@ -41,7 +41,7 @@ require_brew() {
 brew_install_if_missing() {
     local pkg="$1" cmd="${2:-$1}"
     if ! command -v "$cmd" &>/dev/null; then
-        info "Installing $pkg via Homebrew…"
+        info "Installing $pkg via Homebrew..."
         brew install "$pkg"
         success "$pkg installed"
     else
@@ -56,13 +56,13 @@ echo -e "\n${BOLD}Secure Dev Environment — Bootstrap${NC}\n"
 require_brew
 
 # ── Step 1: Install dependencies ──────────────────────────────────────────────
-info "Checking dependencies…"
+info "Checking dependencies..."
 brew_install_if_missing "python-yubico/stable/yubikey-manager" "ykman"
 brew_install_if_missing "age"
 # age-plugin-yubikey removed — not used in XOR-HMAC credential flow
 # bitwarden-cli: install via npm — Homebrew bottle has broken z3/llvm dep on macOS 13
 if ! command -v bw &>/dev/null; then
-    info "Installing bitwarden-cli via npm…"
+    info "Installing bitwarden-cli via npm..."
     command -v npm &>/dev/null || die "npm not found. Install Node.js from https://nodejs.org first."
     npm install -g @bitwarden/cli --quiet
     success "bitwarden-cli installed via npm"
@@ -81,12 +81,12 @@ PYOBJC_VENV="$CONFIG_DIR/venv"
 PYTHON3=$(command -v python3 || true)
 if [[ -n "$PYTHON3" ]]; then
     if [[ ! -d "$PYOBJC_VENV" ]]; then
-        info "Creating Python venv for PyObjC at $PYOBJC_VENV…"
+        info "Creating Python venv for PyObjC at $PYOBJC_VENV..."
         "$PYTHON3" -m venv "$PYOBJC_VENV"
         success "venv created"
     fi
     if ! "$PYOBJC_VENV/bin/python3" -c "import Foundation" &>/dev/null; then
-        info "Installing pyobjc-framework-Cocoa into venv…"
+        info "Installing pyobjc-framework-Cocoa into venv..."
         "$PYOBJC_VENV/bin/pip" install --quiet pyobjc-framework-Cocoa
         success "pyobjc-framework-Cocoa installed into $PYOBJC_VENV"
     else
@@ -97,7 +97,7 @@ else
 fi
 
 # ── Step 2: Create directories ────────────────────────────────────────────────
-info "Creating directory structure…"
+info "Creating directory structure..."
 mkdir -p "$CONFIG_DIR" "$BIN_DIR" "$SECURE_DIR" "$LAUNCHAGENTS_DIR"
 success "Directories ready"
 
@@ -124,7 +124,7 @@ done
 # ── Step 5: Add ~/bin to PATH ─────────────────────────────────────────────────
 ZSHRC="$HOME/.zshrc"
 if ! grep -q 'export PATH="$HOME/bin:$PATH"' "$ZSHRC" 2>/dev/null; then
-    info "Adding ~/bin to PATH in ~/.zshrc…"
+    info "Adding ~/bin to PATH in ~/.zshrc..."
     echo '' >> "$ZSHRC"
     echo '# secure-dev: personal scripts' >> "$ZSHRC"
     echo 'export PATH="$HOME/bin:$PATH"' >> "$ZSHRC"
@@ -135,7 +135,7 @@ fi
 
 # ── Step 6: Configure pyenv in .zshrc ────────────────────────────────────────
 if ! grep -q 'pyenv init' "$ZSHRC" 2>/dev/null; then
-    info "Adding pyenv init to ~/.zshrc…"
+    info "Adding pyenv init to ~/.zshrc..."
     cat >> "$ZSHRC" <<'EOF'
 
 # pyenv
@@ -149,7 +149,7 @@ else
 fi
 
 # ── Step 7: Install launchd agents ───────────────────────────────────────────
-info "Installing launchd agents…"
+info "Installing launchd agents..."
 
 IDLE_TIMEOUT=$(read_toml "$CONFIG_FILE" idle check_interval_seconds)
 IDLE_TIMEOUT="${IDLE_TIMEOUT:-60}"

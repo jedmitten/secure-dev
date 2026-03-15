@@ -59,9 +59,9 @@ command -v hdiutil &>/dev/null || die "hdiutil not found (not macOS?)."
 command -v jq      &>/dev/null || die "jq not found. Run install.sh first."
 
 # ── Bitwarden unlock ──────────────────────────────────────────────────────────
-info "Checking Bitwarden vault status…"
+info "Checking Bitwarden vault status..."
 if ! bw status 2>/dev/null | grep -q '"status":"unlocked"'; then
-    info "Unlocking Bitwarden vault…"
+    info "Unlocking Bitwarden vault..."
     export BW_SESSION
     BW_SESSION=$(bw unlock --raw) || die "Bitwarden unlock failed."
     success "Bitwarden vault unlocked"
@@ -70,21 +70,21 @@ else
 fi
 
 # ── Step 1: Generate container password ───────────────────────────────────────
-info "Generating strong container password…"
+info "Generating strong container password..."
 APFS_PASSWORD=$(openssl rand -base64 32 | tr -d '\n/+=' | head -c 40)
 success "Password generated (40-char alphanumeric)"
 
 # ── Step 2: Generate HMAC salt (for later use by enroll-yubikeys.sh) ──────────
 # We generate and store the salt now so mount-secure.sh can use it after
 # enrollment without any state having to be passed between scripts.
-info "Generating HMAC salt (stored for use by enroll-yubikeys.sh)…"
+info "Generating HMAC salt (stored for use by enroll-yubikeys.sh)..."
 mkdir -p "$(dirname "$SALT_PATH")"
 openssl rand -hex 32 > "$SALT_PATH"
 chmod 600 "$SALT_PATH"
 success "HMAC salt stored at $SALT_PATH"
 
 # ── Step 3: Store raw password in Bitwarden ───────────────────────────────────
-info "Storing password in Bitwarden (temporary — will be replaced by enroll-yubikeys.sh)…"
+info "Storing password in Bitwarden (temporary — will be replaced by enroll-yubikeys.sh)..."
 BW_TEMPLATE=$(bw get template item.login 2>/dev/null)
 BW_ITEM_JSON=$(echo "$BW_TEMPLATE" | jq \
     --arg name "$BW_TEMP_ITEM" \
@@ -101,7 +101,7 @@ echo "$BW_ITEM_ID" > "${SALT_PATH}.bwid"
 chmod 600 "${SALT_PATH}.bwid"
 
 # ── Step 4: Create sparsebundle ──────────────────────────────────────────────
-info "Creating encrypted APFS sparsebundle (${SIZE})…"
+info "Creating encrypted APFS sparsebundle (${SIZE})..."
 hdiutil create \
     -size "$SIZE" \
     -type SPARSEBUNDLE \
@@ -114,7 +114,7 @@ hdiutil create \
 success "Sparsebundle created at $SB_PATH"
 
 # ── Step 5: Initial mount and directory scaffold ──────────────────────────────
-info "Mounting for initial directory setup…"
+info "Mounting for initial directory setup..."
 hdiutil attach "$SB_PATH" -mountpoint "$VOLUME_PATH" -stdinpass <<< "$APFS_PASSWORD"
 
 mkdir -p "$VOLUME_PATH/repos"

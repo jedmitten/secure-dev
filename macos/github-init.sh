@@ -30,7 +30,7 @@ info "GitHub user: $GH_USER"
 cd "$SCRIPT_DIR"
 
 if [[ ! -d .git ]]; then
-    info "Initialising git repo…"
+    info "Initialising git repo..."
     git init
     git branch -M main
 fi
@@ -63,9 +63,9 @@ fi
 
 # ── Create GitHub repo and push ───────────────────────────────────────────────
 if gh repo view "$GH_USER/$REPO_NAME" &>/dev/null; then
-    info "Repo $GH_USER/$REPO_NAME already exists — pushing to existing remote…"
+    info "Repo $GH_USER/$REPO_NAME already exists — pushing to existing remote..."
 else
-    info "Creating $VISIBILITY GitHub repo: $GH_USER/$REPO_NAME…"
+    info "Creating $VISIBILITY GitHub repo: $GH_USER/$REPO_NAME..."
     gh repo create "$REPO_NAME" \
         --"$VISIBILITY" \
         --description "$REPO_DESC" \
