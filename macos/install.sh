@@ -110,7 +110,7 @@ else
 fi
 
 # ── Step 4: Install scripts ───────────────────────────────────────────────────
-info "Installing scripts to $BIN_DIR…"
+info "Installing scripts to $BIN_DIR..."
 for script in mount-secure.sh detach.sh create-container.sh create-container-phase1.sh enroll-yubikeys.sh screenlock-watcher.sh github-init.sh; do
     if [[ -f "$SCRIPT_DIR/$script" ]]; then
         cp "$SCRIPT_DIR/$script" "$BIN_DIR/$script"
