@@ -173,13 +173,13 @@ out  = bytes(pw[i] ^ key[i % len(key)] for i in range(len(pw)))
 print(base64.b64encode(out).decode())
 ")
 
+security delete-generic-password -s "$KC_SERVICE" -a "$KC_ACCOUNT" 2>/dev/null || true
 security add-generic-password \
     -s "$KC_SERVICE" \
     -a "$KC_ACCOUNT" \
     -w "$WRAPPED" \
     -T "" \
-    2>/dev/null || security delete-generic-password -s "$KC_SERVICE" -a "$KC_ACCOUNT" 2>/dev/null \
-               && security add-generic-password -s "$KC_SERVICE" -a "$KC_ACCOUNT" -w "$WRAPPED" -T ""
+    || die "Failed to store wrapped password in Keychain."
 
 success "Wrapped password stored in Keychain (service: $KC_SERVICE)"
 
