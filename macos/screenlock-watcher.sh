@@ -9,9 +9,14 @@
 set -euo pipefail
 
 BIN_DIR="$HOME/bin"
+PYOBJC_VENV="$HOME/.config/secure-dev/venv"
 
-# Python 3 is required (ships with macOS or installed via pyenv/Homebrew)
-exec python3 - <<'PYEOF'
+# Use the venv python3 where PyObjC was installed by install.sh.
+# Falls back to system python3 (PyObjC import will fail gracefully → polling mode).
+PYTHON3="$PYOBJC_VENV/bin/python3"
+[[ -x "$PYTHON3" ]] || PYTHON3="$(command -v python3)"
+
+exec "$PYTHON3" - <<'PYEOF'
 import subprocess
 import signal
 import sys
