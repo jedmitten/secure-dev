@@ -52,18 +52,19 @@ fi
 
 # ── Retrieve password via HMAC-unwrap ─────────────────────────────────────────
 get_password_from_keychain() {
-    local wrapped hmac_salt hmac_output password
+    local wrapped hmac_salt hmac_output password yk_serial
 
-    # 1. Verify YubiKey present
-    ykman info &>/dev/null || return 1
+    # 1. Verify at least one YubiKey present, use first detected serial
+    yk_serial=$(ykman list --serials 2>/dev/null | head -1)
+    [[ -n "$yk_serial" ]] || return 1
 
     # 2. Read HMAC salt
     [[ -f "$SALT_PATH" ]] || return 1
     hmac_salt=$(cat "$SALT_PATH")
 
     # 3. Derive HMAC from YubiKey (touch required)
-    info "Touch YubiKey to unlock…"
-    hmac_output=$(ykman otp calculate "$YK_SLOT" "$hmac_salt" 2>/dev/null) || return 1
+    info "Touch YubiKey to unlock..."
+    hmac_output=$(ykman --device "$yk_serial" otp calculate "$YK_SLOT" "$hmac_salt" 2>/dev/null) || return 1
 
     # 4. Read wrapped password from Keychain
     wrapped=$(security find-generic-password \
@@ -81,14 +82,14 @@ print(out.decode())
 }
 
 get_password_from_bitwarden() {
-    info "Falling back to Bitwarden…"
+    info "Falling back to Bitwarden..."
 
     # Ensure vault is unlocked
     local status
     status=$(bw status 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','locked'))" 2>/dev/null || echo "locked")
 
     if [[ "$status" != "unlocked" ]]; then
-        info "Unlocking Bitwarden vault (YubiKey FIDO2 will be prompted)…"
+        info "Unlocking Bitwarden vault (YubiKey FIDO2 will be prompted)..."
         export BW_SESSION
         BW_SESSION=$(bw unlock --raw)
     fi
@@ -104,15 +105,17 @@ if command -v ykman &>/dev/null && [[ -f "$SALT_PATH" ]]; then
 fi
 
 if [[ -z "$APFS_PASSWORD" ]]; then
-    warn "Keychain path failed or YubiKey not present — trying Bitwarden…"
+    warn "Keychain path failed or YubiKey not present — trying Bitwarden..."
     APFS_PASSWORD=$(get_password_from_bitwarden) || die "Could not retrieve password from Bitwarden."
 
     # Opportunistically re-cache in Keychain if YubiKey now available
-    if command -v ykman &>/dev/null && ykman info &>/dev/null 2>&1; then
-        info "YubiKey now present — refreshing Keychain cache…"
+    local recache_serial
+    recache_serial=$(ykman list --serials 2>/dev/null | head -1)
+    if [[ -n "$recache_serial" ]]; then
+        info "YubiKey present — refreshing Keychain cache..."
         if [[ -f "$SALT_PATH" ]]; then
             HMAC_SALT=$(cat "$SALT_PATH")
-            HMAC_OUT=$(ykman otp calculate "$YK_SLOT" "$HMAC_SALT" 2>/dev/null) || true
+            HMAC_OUT=$(ykman --device "$recache_serial" otp calculate "$YK_SLOT" "$HMAC_SALT" 2>/dev/null) || true
             if [[ -n "$HMAC_OUT" ]]; then
                 WRAPPED=$(python3 -c "
 import base64
@@ -133,7 +136,7 @@ fi
 [[ -n "$APFS_PASSWORD" ]] || die "Failed to retrieve APFS password."
 
 # ── Mount ──────────────────────────────────────────────────────────────────────
-info "Mounting $SB_PATH…"
+info "Mounting $SB_PATH..."
 echo "$APFS_PASSWORD" | hdiutil attach "$SB_PATH" \
     -mountpoint "$VOLUME_PATH" \
     -stdinpass \
