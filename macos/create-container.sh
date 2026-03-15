@@ -123,7 +123,7 @@ for i in "${!YK_SERIALS[@]}"; do
     serial="${YK_SERIALS[$i]}"
     label=$([ "$i" -eq 0 ] && echo "primary" || echo "backup #$i")
     info "Touch $label YubiKey (serial: $serial) when it flashes…"
-    KEY_HMAC=$(echo -n "$TEST_CHALLENGE" | ykman --device "$serial" otp calculate "$YK_SLOT" - 2>/dev/null) \
+    KEY_HMAC=$(ykman --device "$serial" otp calculate "$YK_SLOT" "$TEST_CHALLENGE" 2>/dev/null) \
         || die "HMAC challenge failed on $label YubiKey (serial: $serial)."
     if [[ -z "$REFERENCE_HMAC" ]]; then
         REFERENCE_HMAC="$KEY_HMAC"
@@ -156,7 +156,7 @@ success "HMAC salt stored at $SALT_PATH"
 
 # ── Step 3: Derive HMAC from YubiKey ──────────────────────────────────────────
 info "Deriving HMAC-Secret from primary YubiKey (touch when it flashes)…"
-HMAC_OUTPUT=$(echo -n "$HMAC_SALT" | ykman --device "$YK_SERIAL" otp calculate "$YK_SLOT" - 2>/dev/null) \
+HMAC_OUTPUT=$(ykman --device "$YK_SERIAL" otp calculate "$YK_SLOT" "$HMAC_SALT" 2>/dev/null) \
     || die "YubiKey HMAC failed on primary key (serial: $YK_SERIAL)."
 success "HMAC derived from YubiKey"
 
