@@ -50,7 +50,10 @@ command -v hdiutil &>/dev/null || die "hdiutil not found (not macOS?)."
 # ── Enumerate connected YubiKeys ──────────────────────────────────────────────
 # Both keys must be plugged in now so they can be programmed with the same
 # HMAC secret. The secret is generated once, written to both, then discarded.
-mapfile -t YK_SERIALS < <(ykman list --serials 2>/dev/null)
+YK_SERIALS=()
+while IFS= read -r line; do
+    [[ -n "$line" ]] && YK_SERIALS+=("$line")
+done < <(ykman list --serials 2>/dev/null)
 YK_COUNT=${#YK_SERIALS[@]}
 
 if [[ $YK_COUNT -eq 0 ]]; then

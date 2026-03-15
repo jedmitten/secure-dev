@@ -81,7 +81,10 @@ APFS_PASSWORD=$(bw get item "$PHASE1_BW_ID" | jq -r '.login.password') \
 success "Container password retrieved"
 
 # ── Enumerate connected YubiKeys ──────────────────────────────────────────────
-mapfile -t YK_SERIALS < <(ykman list --serials 2>/dev/null)
+YK_SERIALS=()
+while IFS= read -r line; do
+    [[ -n "$line" ]] && YK_SERIALS+=("$line")
+done < <(ykman list --serials 2>/dev/null)
 YK_COUNT=${#YK_SERIALS[@]}
 
 if [[ $YK_COUNT -eq 0 ]]; then
