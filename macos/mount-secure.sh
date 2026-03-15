@@ -63,7 +63,7 @@ get_password_from_keychain() {
 
     # 3. Derive HMAC from YubiKey (touch required)
     info "Touch YubiKey to unlock…"
-    hmac_output=$(echo -n "$hmac_salt" | ykman otp calculate "$YK_SLOT" - 2>/dev/null) || return 1
+    hmac_output=$(ykman otp calculate "$YK_SLOT" "$hmac_salt" 2>/dev/null) || return 1
 
     # 4. Read wrapped password from Keychain
     wrapped=$(security find-generic-password \
@@ -112,7 +112,7 @@ if [[ -z "$APFS_PASSWORD" ]]; then
         info "YubiKey now present — refreshing Keychain cache…"
         if [[ -f "$SALT_PATH" ]]; then
             HMAC_SALT=$(cat "$SALT_PATH")
-            HMAC_OUT=$(echo -n "$HMAC_SALT" | ykman otp calculate "$YK_SLOT" - 2>/dev/null) || true
+            HMAC_OUT=$(ykman otp calculate "$YK_SLOT" "$HMAC_SALT" 2>/dev/null) || true
             if [[ -n "$HMAC_OUT" ]]; then
                 WRAPPED=$(python3 -c "
 import base64

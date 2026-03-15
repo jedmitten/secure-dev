@@ -263,20 +263,39 @@ if [[ ! -f "$WAKE_SCRIPT" ]]; then
     chmod 700 "$WAKE_SCRIPT"
 fi
 
-# Install and load the sleepwatcher launchd agent
+# Install and load the sleepwatcher launchd agent.
+# We write the plist directly — Homebrew's bundled plist varies by version/arch
+# and does not wire up the -s / -w hook scripts we need.
 SLEEPWATCHER_PLIST="$LAUNCHAGENTS_DIR/de.bernhard-baehr.sleepwatcher.plist"
+SLEEPWATCHER_BIN="$(command -v sleepwatcher || echo /usr/local/sbin/sleepwatcher)"
 if [[ ! -f "$SLEEPWATCHER_PLIST" ]]; then
-    # Homebrew places the example plist here on Apple Silicon; Intel path differs
-    BREW_PLIST="$(brew --prefix)/opt/sleepwatcher/de.bernhard-baehr.sleepwatcher-20compatibility-localuser.plist"
-    if [[ -f "$BREW_PLIST" ]]; then
-        cp "$BREW_PLIST" "$SLEEPWATCHER_PLIST"
-        launchctl unload "$SLEEPWATCHER_PLIST" 2>/dev/null || true
-        launchctl load   "$SLEEPWATCHER_PLIST"
-        success "sleepwatcher launchd agent loaded"
-    else
-        warn "sleepwatcher plist not found at expected Homebrew path."
-        warn "Run manually: cp \$(brew --prefix)/opt/sleepwatcher/*.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/de.bernhard-baehr.sleepwatcher*.plist"
-    fi
+    cat > "$SLEEPWATCHER_PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>de.bernhard-baehr.sleepwatcher</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$SLEEPWATCHER_BIN</string>
+        <string>-V</string>
+        <string>-s</string>
+        <string>$HOME/.sleep</string>
+        <string>-w</string>
+        <string>$HOME/.wakeup</string>
+    </array>
+    <key>KeepAlive</key>
+    <true/>
+    <key>RunAtLoad</key>
+    <true/>
+</dict>
+</plist>
+EOF
+    launchctl unload "$SLEEPWATCHER_PLIST" 2>/dev/null || true
+    launchctl load   "$SLEEPWATCHER_PLIST"
+    success "sleepwatcher launchd agent installed and loaded"
 else
     success "sleepwatcher launchd agent already installed"
 fi

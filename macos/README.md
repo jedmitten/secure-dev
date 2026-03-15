@@ -63,14 +63,14 @@ $EDITOR ~/.config/secure-dev/config.toml
 
 Key fields:
 
-| Field | Default | Notes |
-|---|---|---|
-| `container.path` | `~/Secure/secure-project.sparsebundle` | Container file location |
-| `container.volume_path` | `/Volumes/SecureProject` | Mount point |
-| `container.size` | `50g` | Maximum sparse size |
-| `security.yubikey_slot` | `2` | HMAC-SHA1 slot on YubiKey |
-| `security.bitwarden_item_name` | `SecureProject APFS` | Bitwarden break-glass item |
-| `idle.timeout_minutes` | `15` | Auto-detach after N minutes of HID inactivity |
+| Field                          | Default                                | Notes                                         |
+| ------------------------------ | -------------------------------------- | --------------------------------------------- |
+| `container.path`               | `~/Secure/secure-project.sparsebundle` | Container file location                       |
+| `container.volume_path`        | `/Volumes/SecureProject`               | Mount point                                   |
+| `container.size`               | `50g`                                  | Maximum sparse size                           |
+| `security.yubikey_slot`        | `2`                                    | HMAC-SHA1 slot on YubiKey                     |
+| `security.bitwarden_item_name` | `SecureProject APFS`                   | Bitwarden break-glass item                    |
+| `idle.timeout_minutes`         | `15`                                   | Auto-detach after N minutes of HID inactivity |
 
 ### 4. Bootstrap
 
@@ -140,12 +140,12 @@ uv add fastapi numpy
 
 ## Auto-detach triggers
 
-| Trigger | Mechanism |
-|---|---|
-| Screen lock | `screenlock-watcher.sh` — launchd KeepAlive, Darwin notification centre (PyObjC) |
-| Sleep / lid close | `sleepwatcher` daemon → `~/.sleep` → `detach.sh --trigger sleep` |
-| Idle timeout | `com.securedev.idle.plist` — polls `ioreg HIDIdleTime` |
-| Manual | Automator Quick Action → `detach.sh --trigger manual` |
+| Trigger           | Mechanism                                                                        |
+| ----------------- | -------------------------------------------------------------------------------- |
+| Screen lock       | `screenlock-watcher.sh` — launchd KeepAlive, Darwin notification centre (PyObjC) |
+| Sleep / lid close | `sleepwatcher` daemon → `~/.sleep` → `detach.sh --trigger sleep`                 |
+| Idle timeout      | `com.securedev.idle.plist` — polls `ioreg HIDIdleTime`                           |
+| Manual            | Automator Quick Action → `detach.sh --trigger manual`                            |
 
 All triggers converge on `detach.sh` with a `--trigger` label written to the detach log.
 
@@ -180,11 +180,11 @@ The same physical YubiKey works on any machine. The sparsebundle is just an encr
 
 ## YubiKey loss / recovery
 
-| Scenario | Recovery path |
-|---|---|
-| YubiKey forgotten | `bw get password "SecureProject APFS"` |
-| YubiKey lost permanently | Retrieve from Bitwarden, create new container or re-enrol new key |
-| Bitwarden + YubiKey both unavailable | Permanently locked out — no recovery path |
+| Scenario                             | Recovery path                                                     |
+| ------------------------------------ | ----------------------------------------------------------------- |
+| YubiKey forgotten                    | `bw get password "SecureProject APFS"`                            |
+| YubiKey lost permanently             | Retrieve from Bitwarden, create new container or re-enrol new key |
+| Bitwarden + YubiKey both unavailable | Permanently locked out — no recovery path                         |
 
 Enrol a backup YubiKey at setup time.
 
