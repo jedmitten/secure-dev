@@ -1,21 +1,14 @@
 #!/usr/bin/env bash
-# enroll-yubikeys.sh — Phase 2 YubiKey enrollment
+# enroll-yubikeys.sh — Enroll an additional YubiKey into an existing setup
 #
-# Run this when both YubiKeys are available (after create-container-phase1.sh).
+# Use this to add a new key after the container is already created.
+# The new key gets its own salt and Keychain entry, wrapping the same
+# container password retrieved via an already-enrolled key or Bitwarden.
 #
-# What this script does:
-#   1. Retrieves the container password from the phase1 Bitwarden temp entry
-#   2. Generates one shared HMAC secret and programs BOTH YubiKeys with it
-#   3. Verifies both keys produce identical HMAC output
-#   4. Derives HMAC-Secret from primary key + stored salt
-#   5. XOR-wraps the container password under that HMAC output
-#   6. Stores the wrapped password in macOS Keychain
-#   7. Deletes the plaintext temp Bitwarden entry
-#   8. Creates a properly-labelled break-glass Bitwarden entry
-#      (password only, no raw form — for emergency use with mount-secure.sh fallback)
-#
-# After this script: mount-secure.sh uses YubiKey + Keychain as primary,
-# Bitwarden as break-glass. The raw plaintext password no longer exists anywhere.
+# Run with:
+#   - An already-enrolled key plugged in (to retrieve the container password)
+#   - The new key also plugged in (to enroll it)
+# Or with just the new key plugged in if you retrieve the password from Bitwarden.
 set -euo pipefail
 
 # ── Colours ────────────────────────────────────────────────────────────────────
@@ -44,189 +37,146 @@ read_toml() {
 }
 
 KC_SERVICE=$(read_toml "$CONFIG_FILE" security keychain_service)
-KC_ACCOUNT=$(read_toml "$CONFIG_FILE" security keychain_account)
 YK_SLOT=$(read_toml "$CONFIG_FILE" security yubikey_slot)
-SALT_PATH=$(eval echo "$(read_toml "$CONFIG_FILE" security hmac_salt_path)")
+SALT_DIR=$(eval echo "$(dirname "$(read_toml "$CONFIG_FILE" security hmac_salt_path)")")
 BW_ITEM=$(read_toml "$CONFIG_FILE" security bitwarden_item_name)
-BWID_FILE="${SALT_PATH}.bwid"
 
 # ── Preflight ──────────────────────────────────────────────────────────────────
-echo -e "\n${BOLD}Secure Dev — Phase 2 YubiKey Enrollment${NC}\n"
+echo -e "\n${BOLD}Secure Dev -- Enroll New YubiKey${NC}\n"
 
-command -v ykman    &>/dev/null || die "ykman not found. Run install.sh first."
-command -v bw       &>/dev/null || die "Bitwarden CLI not found."
-command -v jq       &>/dev/null || die "jq not found."
-[[ -f "$SALT_PATH" ]] || die "HMAC salt not found at $SALT_PATH. Was create-container-phase1.sh run?"
-[[ -f "$BWID_FILE" ]] || die "Phase 1 Bitwarden item ID not found at $BWID_FILE. Was create-container-phase1.sh run?"
+command -v ykman &>/dev/null || die "ykman not found."
+command -v python3 &>/dev/null || die "python3 not found."
 
-PHASE1_BW_ID=$(cat "$BWID_FILE")
-[[ -n "$PHASE1_BW_ID" ]] || die "Phase 1 Bitwarden item ID is empty."
-
-# ── Bitwarden unlock ──────────────────────────────────────────────────────────
-info "Checking Bitwarden vault status…"
-if ! bw status 2>/dev/null | grep -q '"status":"unlocked"'; then
-    info "Unlocking Bitwarden vault (touch YubiKey if prompted for FIDO2)…"
-    export BW_SESSION
-    BW_SESSION=$(bw unlock --raw) || die "Bitwarden unlock failed."
-    success "Bitwarden vault unlocked"
-else
-    success "Bitwarden vault already unlocked"
-fi
-
-# ── Retrieve container password from phase1 temp Bitwarden entry ──────────────
-info "Retrieving container password from phase1 Bitwarden entry…"
-APFS_PASSWORD=$(bw get item "$PHASE1_BW_ID" | jq -r '.login.password') \
-    || die "Failed to retrieve password from Bitwarden item $PHASE1_BW_ID."
-[[ -n "$APFS_PASSWORD" ]] || die "Retrieved password is empty — Bitwarden item may have been deleted."
-success "Container password retrieved"
-
-# ── Enumerate connected YubiKeys ──────────────────────────────────────────────
+# ── Detect connected keys ─────────────────────────────────────────────────────
 YK_SERIALS=()
 while IFS= read -r line; do
     [[ -n "$line" ]] && YK_SERIALS+=("$line")
 done < <(ykman list --serials 2>/dev/null)
-YK_COUNT=${#YK_SERIALS[@]}
 
-if [[ $YK_COUNT -eq 0 ]]; then
-    die "No YubiKeys detected. Plug in both YubiKeys and retry."
-elif [[ $YK_COUNT -eq 1 ]]; then
-    warn "Only one YubiKey detected (serial: ${YK_SERIALS[0]})."
-    warn "This defeats the purpose of the two-key setup."
-    warn "You can proceed with one key, but you will not have hardware backup."
-    echo ""
-    read -rp "  Continue with one key only? [y/N]: " ONE_KEY
-    [[ "${ONE_KEY,,}" == "y" ]] || die "Aborted. Plug in both YubiKeys and retry."
-else
-    info "Found $YK_COUNT YubiKeys: ${YK_SERIALS[*]}"
+[[ ${#YK_SERIALS[@]} -eq 0 ]] && die "No YubiKeys detected."
+info "Detected YubiKey(s): ${YK_SERIALS[*]}"
+
+# ── Identify which keys are new (no salt file) ────────────────────────────────
+NEW_SERIALS=()
+ENROLLED_SERIALS=()
+for serial in "${YK_SERIALS[@]}"; do
+    if [[ -f "$SALT_DIR/hmac.salt.$serial" ]]; then
+        ENROLLED_SERIALS+=("$serial")
+    else
+        NEW_SERIALS+=("$serial")
+    fi
+done
+
+[[ ${#NEW_SERIALS[@]} -eq 0 ]] && die "All detected keys are already enrolled. Plug in the new key and retry."
+info "New key(s) to enroll: ${NEW_SERIALS[*]}"
+[[ ${#ENROLLED_SERIALS[@]} -gt 0 ]] && info "Already enrolled: ${ENROLLED_SERIALS[*]}"
+
+# ── Retrieve container password ───────────────────────────────────────────────
+# Try enrolled key first, fall back to Bitwarden.
+APFS_PASSWORD=""
+
+if [[ ${#ENROLLED_SERIALS[@]} -gt 0 ]]; then
+    enrolled_serial="${ENROLLED_SERIALS[0]}"
+    salt_path="$SALT_DIR/hmac.salt.$enrolled_serial"
+    kc_account="apfs-password-$enrolled_serial"
+    salt=$(cat "$salt_path")
+
+    info "Touch enrolled YubiKey $enrolled_serial to retrieve password..."
+    hmac=$(ykman --device "$enrolled_serial" otp calculate "$YK_SLOT" "$salt" 2>/dev/null) \
+        || warn "HMAC failed for enrolled key $enrolled_serial -- will try Bitwarden."
+
+    if [[ -n "${hmac:-}" ]]; then
+        wrapped=$(security find-generic-password \
+            -s "$KC_SERVICE" -a "$kc_account" -w 2>/dev/null) || true
+
+        if [[ -n "${wrapped:-}" ]]; then
+            APFS_PASSWORD=$(WRAPPED="$wrapped" HMAC="$hmac" python3 -c "
+import base64, os
+wrapped = base64.b64decode(os.environ['WRAPPED'])
+key     = os.environ['HMAC'].encode()
+out     = bytes(wrapped[i] ^ key[i % len(key)] for i in range(len(wrapped)))
+print(out.decode())
+") || true
+        fi
+    fi
+    unset hmac wrapped salt
 fi
 
-YK_SERIAL="${YK_SERIALS[0]}"   # primary — serial recorded in final Bitwarden item
+if [[ -z "$APFS_PASSWORD" ]]; then
+    warn "Could not retrieve password via enrolled key -- falling back to Bitwarden..."
+    local_status=$(bw status 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','locked'))" 2>/dev/null || echo "locked")
+    if [[ "$local_status" != "unlocked" ]]; then
+        export BW_SESSION
+        BW_SESSION=$(bw unlock --raw)
+    fi
+    APFS_PASSWORD=$(bw get password "$BW_ITEM" 2>/dev/null) \
+        || die "Could not retrieve password from Bitwarden."
+fi
 
-# ── Generate shared HMAC secret ───────────────────────────────────────────────
-# One secret, programmed identically onto every key, then discarded.
-info "Generating shared HMAC secret (20 bytes)…"
-HMAC_SECRET=$(openssl rand -hex 20)
+[[ -n "$APFS_PASSWORD" ]] || die "Failed to retrieve container password."
+success "Container password retrieved"
 
-# ── Program each YubiKey ──────────────────────────────────────────────────────
-program_yubikey() {
-    local serial="$1" label="$2"
-    info "Programming $label YubiKey (serial: $serial)…"
+# ── Enroll each new key ───────────────────────────────────────────────────────
+for serial in "${NEW_SERIALS[@]}"; do
+    info "Programming YubiKey $serial..."
 
-    local slot_info slot_line
     slot_info=$(ykman --device "$serial" otp info 2>/dev/null || true)
     slot_line=$(echo "$slot_info" | grep -i "Slot $YK_SLOT" || true)
 
     if echo "$slot_line" | grep -qi "programmed"; then
-        warn "$label YubiKey slot $YK_SLOT is already programmed."
-        warn "Continuing will OVERWRITE the existing slot $YK_SLOT configuration."
-        echo ""
-        read -rp "  Type 'overwrite' to confirm for $label key, or Ctrl-C to abort: " CONFIRM
-        [[ "$CONFIRM" == "overwrite" ]] || die "Aborted. Slot $YK_SLOT on $label key not modified."
-    else
-        info "$label YubiKey slot $YK_SLOT is empty — safe to program."
+        warn "YubiKey $serial slot $YK_SLOT is already programmed."
+        read -rp "  Type 'overwrite' to confirm, or Ctrl-C to abort: " CONFIRM
+        [[ "$CONFIRM" == "overwrite" ]] || die "Aborted."
     fi
 
-    ykman --device "$serial" otp chalresp --force "$YK_SLOT" "$HMAC_SECRET" \
-        || die "Failed to program slot $YK_SLOT on $label YubiKey (serial: $serial)."
-    success "$label YubiKey programmed (serial: $serial, slot: $YK_SLOT)"
-}
+    # Program with a new random secret
+    local_secret=$(openssl rand -hex 20)
+    ykman --device "$serial" otp chalresp --force "$YK_SLOT" "$local_secret" \
+        || die "Failed to program YubiKey $serial."
+    local_secret="0000000000000000000000000000000000000000"
+    unset local_secret
+    success "YubiKey $serial programmed"
 
-for i in "${!YK_SERIALS[@]}"; do
-    label=$([ "$i" -eq 0 ] && echo "primary" || echo "backup #$i")
-    program_yubikey "${YK_SERIALS[$i]}" "$label"
-done
+    # Generate salt, derive HMAC, wrap password, store in Keychain
+    salt_path="$SALT_DIR/hmac.salt.$serial"
+    kc_account="apfs-password-$serial"
 
-# ── Verify all keys produce identical HMAC output ─────────────────────────────
-info "Verifying all keys produce identical HMAC output…"
-TEST_CHALLENGE="deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-REFERENCE_HMAC=""
-for i in "${!YK_SERIALS[@]}"; do
-    serial="${YK_SERIALS[$i]}"
-    label=$([ "$i" -eq 0 ] && echo "primary" || echo "backup #$i")
-    info "Touch $label YubiKey (serial: $serial) when it flashes…"
-    KEY_HMAC=$(ykman --device "$serial" otp calculate "$YK_SLOT" "$TEST_CHALLENGE" 2>/dev/null) \
-        || die "HMAC challenge failed on $label YubiKey (serial: $serial)."
-    if [[ -z "$REFERENCE_HMAC" ]]; then
-        REFERENCE_HMAC="$KEY_HMAC"
-        success "Primary key HMAC: $KEY_HMAC"
-    elif [[ "$KEY_HMAC" != "$REFERENCE_HMAC" ]]; then
-        die "HMAC mismatch on $label key!\n  Expected: $REFERENCE_HMAC\n  Got: $KEY_HMAC\n  Keys have different secrets. Aborting before any Keychain writes."
-    else
-        success "$label key HMAC matches primary ✓"
-    fi
-done
-unset REFERENCE_HMAC TEST_CHALLENGE
+    openssl rand -hex 32 > "$salt_path"
+    chmod 600 "$salt_path"
+    salt=$(cat "$salt_path")
 
-# Zero the programming secret — no longer needed
-HMAC_SECRET="0000000000000000000000000000000000000000"
-unset HMAC_SECRET
-success "All keys verified and programming secret discarded"
+    info "Touch YubiKey $serial when it flashes..."
+    hmac=$(ykman --device "$serial" otp calculate "$YK_SLOT" "$salt" 2>/dev/null) \
+        || die "HMAC derivation failed for YubiKey $serial."
 
-# ── Derive HMAC-Secret from primary key + stored salt ─────────────────────────
-HMAC_SALT=$(cat "$SALT_PATH")
-info "Deriving HMAC-Secret from primary YubiKey (touch when it flashes)…"
-HMAC_OUTPUT=$(ykman --device "$YK_SERIAL" otp calculate "$YK_SLOT" "$HMAC_SALT" 2>/dev/null) \
-    || die "YubiKey HMAC derivation failed on primary key (serial: $YK_SERIAL)."
-success "HMAC derived"
-
-# ── XOR-wrap container password under HMAC output ────────────────────────────
-info "Wrapping container password with HMAC output…"
-WRAPPED=$(python3 -c "
-import sys, base64
-pw   = b'$APFS_PASSWORD'
-key  = b'$HMAC_OUTPUT'
-out  = bytes(pw[i] ^ key[i % len(key)] for i in range(len(pw)))
+    wrapped=$(APFS_PASSWORD="$APFS_PASSWORD" HMAC="$hmac" python3 -c "
+import base64, os
+pw  = os.environ['APFS_PASSWORD'].encode()
+key = os.environ['HMAC'].encode()
+out = bytes(pw[i] ^ key[i % len(key)] for i in range(len(pw)))
 print(base64.b64encode(out).decode())
 ")
 
-# ── Store wrapped password in Keychain ────────────────────────────────────────
-info "Storing wrapped password in Keychain…"
-# Delete existing entry if present (idempotent)
-security delete-generic-password -s "$KC_SERVICE" -a "$KC_ACCOUNT" &>/dev/null || true
-security add-generic-password \
-    -s "$KC_SERVICE" \
-    -a "$KC_ACCOUNT" \
-    -w "$WRAPPED" \
-    -T "" \
-    || die "Failed to store wrapped password in Keychain."
-success "Wrapped password stored in Keychain (service: $KC_SERVICE)"
+    security delete-generic-password -s "$KC_SERVICE" -a "$kc_account" 2>/dev/null || true
+    security add-generic-password \
+        -s "$KC_SERVICE" \
+        -a "$kc_account" \
+        -w "$wrapped" \
+        -T "" \
+        || die "Failed to store wrapped password in Keychain for key $serial."
 
-# ── Create final break-glass Bitwarden entry ──────────────────────────────────
-info "Creating final break-glass Bitwarden entry…"
-BW_TEMPLATE=$(bw get template item.login 2>/dev/null)
-BW_FINAL_JSON=$(echo "$BW_TEMPLATE" | jq \
-    --arg name "$BW_ITEM" \
-    --arg pw "$APFS_PASSWORD" \
-    --arg serial "$YK_SERIAL" \
-    --arg serials "${YK_SERIALS[*]}" \
-    '.name = $name | .login.password = $pw |
-     .notes = ("BREAK-GLASS ONLY — use if YubiKey unavailable.\nYubiKey serials enrolled: " + $serials + "\nPrimary: " + $serial + "\nSalt path: '"$SALT_PATH"'")'
-)
-echo "$BW_FINAL_JSON" | bw encode | bw create item >/dev/null \
-    || die "Failed to create final Bitwarden break-glass entry."
-success "Break-glass entry created: $BW_ITEM"
+    success "YubiKey $serial enrolled (salt: $salt_path, keychain: $KC_SERVICE / $kc_account)"
+    unset hmac wrapped salt
+done
 
-# ── Delete phase1 temp Bitwarden entry ───────────────────────────────────────
-info "Deleting phase1 temporary Bitwarden entry (item ID: $PHASE1_BW_ID)…"
-bw delete item "$PHASE1_BW_ID" \
-    || warn "Could not auto-delete phase1 Bitwarden entry (ID: $PHASE1_BW_ID). Delete it manually."
-success "Phase1 temp entry deleted"
-
-# Remove the .bwid state file — no longer needed
-rm -f "$BWID_FILE"
-
-# Clear sensitive variables
-unset APFS_PASSWORD HMAC_OUTPUT WRAPPED HMAC_SALT
+unset APFS_PASSWORD
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
-echo -e "${GREEN}${BOLD}Phase 2 enrollment complete.${NC}"
+echo -e "${GREEN}${BOLD}Enrollment complete.${NC}"
 echo ""
-echo "  YubiKey(s)   : ${YK_SERIALS[*]} (slot $YK_SLOT)"
-echo "  HMAC salt    : $SALT_PATH"
-echo "  Keychain     : $KC_SERVICE / $KC_ACCOUNT (wrapped, HMAC-protected)"
-echo "  Bitwarden    : $BW_ITEM (break-glass only)"
+echo "  Newly enrolled: ${NEW_SERIALS[*]}"
+echo "  All enrolled  : ${YK_SERIALS[*]}"
 echo ""
-echo "  mount-secure.sh will now use YubiKey + Keychain as primary."
-echo "  The plaintext password no longer exists in Bitwarden temp storage."
+echo "  Each key works independently -- plug in either to mount."
 echo ""
